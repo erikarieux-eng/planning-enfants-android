@@ -19,7 +19,9 @@ public final class LocalStore {
     private static SharedPreferences p(Context c) { return c.getSharedPreferences(PREFS, Context.MODE_PRIVATE); }
 
     public static synchronized void seedIfNeeded(Context c) {
-        if (p(c).getBoolean(KEY_SEEDED, false)) return;
+        boolean already = p(c).getBoolean(KEY_SEEDED, false);
+        boolean empty = p(c).getString(KEY_EVENTS, "[]").equals("[]");
+        if (already && !empty) return;
         List<PlannerEvent> out = new ArrayList<>();
         for (ScheduleData.Event s : ScheduleData.events()) {
             PlannerEvent e = new PlannerEvent();
