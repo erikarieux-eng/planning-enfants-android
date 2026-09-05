@@ -199,6 +199,34 @@ public final class SupabaseSync {
         });
     }
 
+    public interface PhotoParseResult { void done(boolean ok, JSONArray entries, String message); }
+
+    /** Envoie une photo d'emploi du temps à l'IA côté serveur et retourne les créneaux détectés (à valider par l'utilisateur avant import). */
+    public static void parseSchedulePhoto(Context c, String base64Image, String mediaType, PhotoParseResult result) {
+        IO.execute(() -> {
+            try {
+                ensureAuthBlocking(c);
+                JSONObject payload = new JSONObject();
+                payload.put("image_base64", base64Image);
+                payload.put("media_type", mediaType);
+                String resp = authed("POST", c, "/functions/v1/parse-schedule", payload.toString(), null);
+                JSONObject o = new JSONObject(resp);
+                if (o.has("error") && (!o.has("entries") || o.optJSONArray("entries") == null || o.optJSONArray("entries").length() == 0)) {
+                    String msg = o.optString("error", "");
+                    boolean notConfigured = msg.contains("not configured");
+                    MAIN.post(() -> result.done(false, new JSONArray(), notConfigured ? "L'analyse de photo n'est pas encore activée (clé Anthropic manquante)." : "Analyse impossible : " + msg));
+                    return;
+                }
+                JSONArray entries = o.optJSONArray("entries");
+                if (entries == null) entries = new JSONArray();
+                JSONArray finalEntries = entries;
+                MAIN.post(() -> result.done(true, finalEntries, null));
+            } catch (Exception e) {
+                MAIN.post(() -> result.done(false, new JSONArray(), friendlyError(e)));
+            }
+        });
+    }
+
     private static void startPolling() {
         if (polling) return;
         polling = true;

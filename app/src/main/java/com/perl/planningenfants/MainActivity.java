@@ -4,6 +4,7 @@ import android.Manifest;
 import android.app.AlarmManager;
 import android.app.AlertDialog;
 import android.app.DatePickerDialog;
+import android.app.ProgressDialog;
 import android.app.TimePickerDialog;
 import android.content.ClipData;
 import android.content.ClipboardManager;
@@ -11,13 +12,17 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
 import android.graphics.Color;
 import android.graphics.Typeface;
 import android.graphics.drawable.GradientDrawable;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.provider.MediaStore;
 import android.provider.Settings;
+import android.util.Base64;
 import android.view.Gravity;
 import android.view.View;
 import android.widget.Button;
@@ -31,7 +36,13 @@ import android.widget.ArrayAdapter;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
+import androidx.core.content.FileProvider;
+import org.json.JSONArray;
+import org.json.JSONObject;
 
+import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.InputStream;
 import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Calendar;
@@ -52,6 +63,9 @@ public class MainActivity extends android.app.Activity implements SupabaseSync.U
     private final String[] CHILDREN={"Andrew","Shanayss","Kelvyn"};
     private final List<Button> tabButtons=new ArrayList<>();
     private final List<String> tabKeys=new ArrayList<>();
+    private Uri pendingPhotoUri;
+    private String pendingPhotoChild;
+    private static final int REQ_CAMERA=2001,REQ_GALLERY=2002,REQ_CAMERA_PERM=2003;
 
     @Override protected void onCreate(Bundle b){super.onCreate(b);LocalStore.seedIfNeeded(this);ReminderScheduler.ensureDefaults(this);prefs=getSharedPreferences(ReminderScheduler.PREFS,MODE_PRIVATE);requestNotificationPermission();ReminderScheduler.scheduleAll(this);buildUi();SyncWorker.schedule(this);SupabaseSync.start(this,this);}
 
@@ -88,7 +102,7 @@ public class MainActivity extends android.app.Activity implements SupabaseSync.U
 
     private void showWeek(){currentTab="week";content.removeAllViews();Calendar base=Calendar.getInstance();int dow=base.get(Calendar.DAY_OF_WEEK);int delta=Calendar.MONDAY-dow;if(delta>0)delta-=7;base.add(Calendar.DAY_OF_YEAR,delta);for(int i=0;i<6;i++){Calendar d=(Calendar)base.clone();d.add(Calendar.DAY_OF_YEAR,i);addSection(capitalize(new SimpleDateFormat("EEEE d MMM",Locale.FRANCE).format(d.getTime())));List<PlannerEvent>l=eventsFor(d);if(l.isEmpty())addMuted("Rien de prévu.");for(PlannerEvent e:l)addEventCard(e);for(PickupAssignment a:pickupsForDate(iso(d)))addPickupCard(a);}}
 
-    private void showAdd(){currentTab="add";content.removeAllViews();addSection("Ajouter au planning");if(!SupabaseSync.isAdmin(this)){addMuted("Sur le téléphone d'un enfant, le planning est en lecture seule.");return;}addMuted("Les événements ajoutés sont synchronisés avec tous les appareils de la famille dès qu'un espace famille est créé.");Button e=action("➕ Ajouter un événement");e.setOnClickListener(v->showAddEventDialog());content.addView(e,paramsWithTop(8));Button p=action("👤 Ajouter une personne autorisée");p.setOnClickListener(v->showAddPersonDialog());content.addView(p,paramsWithTop(8));Button a=action("🚗 Définir qui récupère un enfant");a.setOnClickListener(v->showAssignmentDialog());content.addView(a,paramsWithTop(8));}
+    private void showAdd(){currentTab="add";content.removeAllViews();addSection("Ajouter au planning");if(!SupabaseSync.isAdmin(this)){addMuted("Sur le téléphone d'un enfant, le planning est en lecture seule.");return;}addMuted("Les événements ajoutés sont synchronisés avec tous les appareils de la famille dès qu'un espace famille est créé.");Button e=action("➕ Ajouter un événement");e.setOnClickListener(v->showAddEventDialog());content.addView(e,paramsWithTop(8));Button p=action("👤 Ajouter une personne autorisée");p.setOnClickListener(v->showAddPersonDialog());content.addView(p,paramsWithTop(8));Button a=action("🚗 Définir qui récupère un enfant");a.setOnClickListener(v->showAssignmentDialog());content.addView(a,paramsWithTop(8));Button photo=action("📷 Importer un emploi du temps (photo)");photo.setOnClickListener(v->startScheduleImport());content.addView(photo,paramsWithTop(8));addMuted("Prends une photo de l'emploi du temps scolaire : les cours détectés te seront proposés avant tout ajout, rien n'est importé automatiquement.");}
 
     private void showPickups(){currentTab="pickups";content.removeAllViews();addSection("Récupérations");String today=iso(Calendar.getInstance());List<PickupAssignment>todayList=pickupsForDate(today);if(todayList.isEmpty())addMuted("Aucune personne définie pour aujourd'hui.");else for(PickupAssignment a:todayList)addPickupCard(a);
         if(SupabaseSync.isAdmin(this)){Button assign=action("🚗 Définir / changer une récupération");assign.setOnClickListener(v->showAssignmentDialog());content.addView(assign,paramsWithTop(8));}
@@ -104,6 +118,92 @@ public class MainActivity extends android.app.Activity implements SupabaseSync.U
     private void showAddEventDialog(){LinearLayout box=dialogBox();Spinner child=spinner(CHILDREN);box.addView(label("Enfant"));box.addView(child);EditText title=input("Ex. Médecin, match, anniversaire…");box.addView(label("Événement"));box.addView(title);String[] types={"Activité","École / cours","Garderie","Autre"};Spinner type=spinner(types);box.addView(label("Type"));box.addView(type);CheckBox weekly=new CheckBox(this);weekly.setText("Répéter chaque semaine");box.addView(weekly);String[] days={"Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi","Dimanche"};Spinner day=spinner(days);box.addView(label("Jour si récurrent"));box.addView(day);Calendar selected=Calendar.getInstance();String[] date={iso(selected)},start={"17:00"},end={"18:00"};Button dateB=action("Date : "+date[0]);dateB.setOnClickListener(v->pickDate(selected,s->{date[0]=s;dateB.setText("Date : "+s);}));box.addView(dateB,paramsWithTop(5));Button startB=action("Début : "+start[0]);startB.setOnClickListener(v->pickTime(start[0],s->{start[0]=s;startB.setText("Début : "+s);}));box.addView(startB,paramsWithTop(5));Button endB=action("Fin : "+end[0]);endB.setOnClickListener(v->pickTime(end[0],s->{end[0]=s;endB.setText("Fin : "+s);}));box.addView(endB,paramsWithTop(5));weekly.setOnCheckedChangeListener((b,x)->dateB.setEnabled(!x));new AlertDialog.Builder(this).setTitle("Nouvel événement").setView(box).setNegativeButton("Annuler",null).setPositiveButton("Ajouter",(d,w)->{PlannerEvent e=new PlannerEvent();e.id="custom_"+UUID.randomUUID();e.child=child.getSelectedItem().toString();e.title=title.getText().toString().trim().isEmpty()?"Événement":title.getText().toString().trim();e.start=start[0];e.end=end[0];e.weekly=weekly.isChecked();e.day=e.weekly?calendarDay(day.getSelectedItemPosition()):0;e.dateIso=e.weekly?"":date[0];int ti=type.getSelectedItemPosition();e.kind=ti==0?"ACTIVITY":ti==1?"SCHOOL":ti==2?"GARDERIE":"OTHER";e.updatedAt=System.currentTimeMillis();SupabaseSync.saveEvent(this,e);showAdd();Toast.makeText(this,"Événement ajouté",Toast.LENGTH_SHORT).show();}).show();}
 
     private void showAddPersonDialog(){LinearLayout box=dialogBox();EditText name=input("Prénom et nom");EditText relation=input("Ex. Mamie, Papa, Tante…");EditText phone=input("Téléphone (facultatif)");box.addView(label("Nom"));box.addView(name);box.addView(label("Lien"));box.addView(relation);box.addView(label("Téléphone"));box.addView(phone);box.addView(label("Peut récupérer"));CheckBox a=new CheckBox(this);a.setText("Andrew");CheckBox s=new CheckBox(this);s.setText("Shanayss");CheckBox k=new CheckBox(this);k.setText("Kelvyn");a.setChecked(true);s.setChecked(true);k.setChecked(true);box.addView(a);box.addView(s);box.addView(k);new AlertDialog.Builder(this).setTitle("Personne autorisée").setView(box).setNegativeButton("Annuler",null).setPositiveButton("Ajouter",(d,w)->{if(name.getText().toString().trim().isEmpty()){Toast.makeText(this,"Le nom est obligatoire",Toast.LENGTH_SHORT).show();return;}PickupPerson p=new PickupPerson();p.id="person_"+UUID.randomUUID();p.name=name.getText().toString().trim();p.relation=relation.getText().toString().trim();p.phone=phone.getText().toString().trim();if(a.isChecked())p.children.add("Andrew");if(s.isChecked())p.children.add("Shanayss");if(k.isChecked())p.children.add("Kelvyn");p.updatedAt=System.currentTimeMillis();SupabaseSync.savePerson(this,p);showPickups();}).show();}
+
+    // ---------------- Import d'emploi du temps par photo ----------------
+
+    private void startScheduleImport(){
+        Spinner child=spinner(CHILDREN);LinearLayout box=dialogBox();box.addView(label("Cet emploi du temps concerne"));box.addView(child);
+        new AlertDialog.Builder(this).setTitle("Importer une photo").setView(box).setNegativeButton("Annuler",null).setPositiveButton("Continuer",(d,w)->{
+            pendingPhotoChild=child.getSelectedItem().toString();
+            String[] options={"📷 Prendre une photo","🖼 Choisir dans la galerie"};
+            new AlertDialog.Builder(this).setTitle("Photo de l'emploi du temps").setItems(options,(dd,which)->{if(which==0)launchCamera();else launchGallery();}).show();
+        }).show();
+    }
+
+    private void launchCamera(){
+        if(checkSelfPermission(Manifest.permission.CAMERA)!=PackageManager.PERMISSION_GRANTED){requestPermissions(new String[]{Manifest.permission.CAMERA},REQ_CAMERA_PERM);return;}
+        try{
+            File dir=new File(getCacheDir(),"images");if(!dir.exists())dir.mkdirs();
+            File f=new File(dir,"schedule_"+System.currentTimeMillis()+".jpg");
+            pendingPhotoUri=FileProvider.getUriForFile(this,"com.perl.planningenfants.fileprovider",f);
+            Intent i=new Intent(MediaStore.ACTION_IMAGE_CAPTURE);i.putExtra(MediaStore.EXTRA_OUTPUT,pendingPhotoUri);i.addFlags(Intent.FLAG_GRANT_WRITE_URI_PERMISSION);
+            startActivityForResult(i,REQ_CAMERA);
+        }catch(Exception e){Toast.makeText(this,"Appareil photo indisponible.",Toast.LENGTH_SHORT).show();}
+    }
+    private void launchGallery(){Intent i=new Intent(Intent.ACTION_GET_CONTENT);i.setType("image/*");startActivityForResult(i,REQ_GALLERY);}
+
+    @Override public void onRequestPermissionsResult(int requestCode,String[] permissions,int[] grantResults){
+        super.onRequestPermissionsResult(requestCode,permissions,grantResults);
+        if(requestCode==REQ_CAMERA_PERM){if(grantResults.length>0&&grantResults[0]==PackageManager.PERMISSION_GRANTED)launchCamera();else Toast.makeText(this,"Autorisation caméra refusée.",Toast.LENGTH_SHORT).show();}
+    }
+
+    @Override protected void onActivityResult(int requestCode,int resultCode,Intent data){
+        super.onActivityResult(requestCode,resultCode,data);
+        if(resultCode!=RESULT_OK)return;
+        try{
+            Uri uri=requestCode==REQ_CAMERA?pendingPhotoUri:(data!=null?data.getData():null);
+            if(uri==null)return;
+            if(requestCode==REQ_GALLERY||requestCode==REQ_CAMERA)analyzeSchedulePhoto(uri);
+        }catch(Exception e){Toast.makeText(this,"Impossible de lire la photo.",Toast.LENGTH_SHORT).show();}
+    }
+
+    private void analyzeSchedulePhoto(Uri uri){
+        ProgressDialog pd=new ProgressDialog(this);pd.setMessage("Analyse de la photo en cours…");pd.setCancelable(false);pd.show();
+        new Thread(()->{
+            try{
+                InputStream is=getContentResolver().openInputStream(uri);
+                Bitmap bmp=BitmapFactory.decodeStream(is);if(is!=null)is.close();
+                if(bmp==null){runOnUiThread(()->{pd.dismiss();Toast.makeText(this,"Image illisible.",Toast.LENGTH_SHORT).show();});return;}
+                int maxDim=1600;
+                if(bmp.getWidth()>maxDim||bmp.getHeight()>maxDim){float scale=Math.min((float)maxDim/bmp.getWidth(),(float)maxDim/bmp.getHeight());bmp=Bitmap.createScaledBitmap(bmp,Math.round(bmp.getWidth()*scale),Math.round(bmp.getHeight()*scale),true);}
+                ByteArrayOutputStream bos=new ByteArrayOutputStream();bmp.compress(Bitmap.CompressFormat.JPEG,85,bos);
+                String base64=Base64.encodeToString(bos.toByteArray(),Base64.NO_WRAP);
+                SupabaseSync.parseSchedulePhoto(this,base64,"image/jpeg",(ok,entries,msg)->runOnUiThread(()->{
+                    pd.dismiss();
+                    if(!ok){Toast.makeText(this,msg,Toast.LENGTH_LONG).show();return;}
+                    if(entries.length()==0){Toast.makeText(this,"Aucun cours détecté sur cette photo.",Toast.LENGTH_LONG).show();return;}
+                    showImportReviewDialog(entries);
+                }));
+            }catch(Exception e){runOnUiThread(()->{pd.dismiss();Toast.makeText(this,"Erreur de lecture de l'image.",Toast.LENGTH_SHORT).show();});}
+        }).start();
+    }
+
+    private void showImportReviewDialog(JSONArray entries){
+        LinearLayout box=dialogBox();box.addView(label(entries.length()+" cours détectés pour "+pendingPhotoChild+" — décoche ce qui est incorrect :"));
+        List<CheckBox> boxes=new ArrayList<>();
+        String[] dayLabels={"Lun","Mar","Mer","Jeu","Ven","Sam"};
+        for(int i=0;i<entries.length();i++){
+            JSONObject o=entries.optJSONObject(i);if(o==null)continue;
+            String day=o.optString("day","MON");int dayIdx=java.util.Arrays.asList("MON","TUE","WED","THU","FRI","SAT").indexOf(day);
+            String dayLabel=dayIdx>=0?dayLabels[dayIdx]:day;
+            CheckBox cb=new CheckBox(this);cb.setChecked(true);cb.setText(dayLabel+" "+o.optString("start","")+"-"+o.optString("end","")+"  "+o.optString("title",""));cb.setTextSize(14);
+            box.addView(cb,paramsWithTop(4));boxes.add(cb);
+        }
+        new AlertDialog.Builder(this).setTitle("Vérifier avant import").setView(box).setNegativeButton("Annuler",null).setPositiveButton("Importer",(d,w)->{
+            int imported=0;
+            for(int i=0;i<entries.length()&&i<boxes.size();i++){
+                if(!boxes.get(i).isChecked())continue;
+                JSONObject o=entries.optJSONObject(i);if(o==null)continue;
+                String day=o.optString("day","MON");int dayIdx=java.util.Arrays.asList("MON","TUE","WED","THU","FRI","SAT").indexOf(day);
+                int[] calDays={Calendar.MONDAY,Calendar.TUESDAY,Calendar.WEDNESDAY,Calendar.THURSDAY,Calendar.FRIDAY,Calendar.SATURDAY};
+                PlannerEvent e=new PlannerEvent();e.id="custom_"+UUID.randomUUID();e.child=pendingPhotoChild;e.title=o.optString("title","Cours");
+                e.start=o.optString("start","08:00");e.end=o.optString("end","09:00");e.weekly=true;e.day=dayIdx>=0?calDays[dayIdx]:Calendar.MONDAY;e.dateIso="";
+                String kind=o.optString("kind","SCHOOL");e.kind=("SCHOOL".equals(kind)||"ACTIVITY".equals(kind)||"GARDERIE".equals(kind))?kind:"OTHER";
+                e.updatedAt=System.currentTimeMillis();SupabaseSync.saveEvent(this,e);imported++;
+            }
+            Toast.makeText(this,imported+" cours importés.",Toast.LENGTH_LONG).show();showAdd();
+        }).show();
+    }
 
     private void showAssignmentDialog(){
         new AlertDialog.Builder(this).setTitle("Quel enfant ?").setItems(CHILDREN,(d,which)->showAssignmentForChild(CHILDREN[which])).show();
