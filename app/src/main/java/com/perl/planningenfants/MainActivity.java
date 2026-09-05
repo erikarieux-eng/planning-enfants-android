@@ -48,24 +48,37 @@ public class MainActivity extends android.app.Activity implements SupabaseSync.U
     private SharedPreferences prefs;
     private String currentTab = "today";
     private final int BLUE=Color.rgb(37,99,235),PINK=Color.rgb(190,24,93),GREEN=Color.rgb(22,163,74),ORANGE=Color.rgb(234,88,12);
+    private final int PRIMARY=Color.rgb(79,70,229),PAGE_BG=Color.rgb(246,246,249),CARD_BORDER=Color.rgb(232,232,238),TAB_BG=Color.rgb(237,237,242),TEXT_DARK=Color.rgb(17,24,39),TEXT_MUTED=Color.rgb(107,114,128);
     private final String[] CHILDREN={"Andrew","Shanayss","Kelvyn"};
+    private final List<Button> tabButtons=new ArrayList<>();
+    private final List<String> tabKeys=new ArrayList<>();
 
     @Override protected void onCreate(Bundle b){super.onCreate(b);LocalStore.seedIfNeeded(this);ReminderScheduler.ensureDefaults(this);prefs=getSharedPreferences(ReminderScheduler.PREFS,MODE_PRIVATE);requestNotificationPermission();ReminderScheduler.scheduleAll(this);buildUi();SyncWorker.schedule(this);SupabaseSync.start(this,this);}
 
     private void buildUi(){
-        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(12),dp(14),dp(10));root.setBackgroundColor(Color.rgb(247,247,248));
-        TextView title=new TextView(this);title.setText("Planning famille");title.setTextSize(26);title.setTypeface(Typeface.DEFAULT_BOLD);title.setTextColor(Color.rgb(17,24,39));root.addView(title);
-        LinearLayout head=new LinearLayout(this);head.setOrientation(LinearLayout.HORIZONTAL);head.setGravity(Gravity.CENTER_VERTICAL);
-        TextView sub=new TextView(this);sub.setText(new SimpleDateFormat("EEEE d MMMM",Locale.FRANCE).format(new Date()));sub.setTextSize(14);sub.setTextColor(Color.rgb(107,114,128));head.addView(sub,new LinearLayout.LayoutParams(0,-2,1));
-        syncBadge=new TextView(this);syncBadge.setTextSize(12);syncBadge.setPadding(dp(8),dp(4),dp(8),dp(4));head.addView(syncBadge);root.addView(head);updateSyncBadge();
+        LinearLayout root=new LinearLayout(this);root.setOrientation(LinearLayout.VERTICAL);root.setPadding(dp(14),dp(14),dp(14),0);root.setBackgroundColor(PAGE_BG);
 
-        HorizontalScrollView hsv=new HorizontalScrollView(this);hsv.setHorizontalScrollBarEnabled(false);LinearLayout tabs=new LinearLayout(this);tabs.setOrientation(LinearLayout.HORIZONTAL);
-        tabs.addView(tab("Aujourd'hui",()->showToday()));tabs.addView(tab("Semaine",()->showWeek()));tabs.addView(tab("➕ Ajouter",()->showAdd()));tabs.addView(tab("👥 Récupérations",()->showPickups()));tabs.addView(tab("☁ Famille",()->showFamily()));tabs.addView(tab("🔔 Rappels",()->showReminders()));hsv.addView(tabs);root.addView(hsv,new LinearLayout.LayoutParams(-1,dp(48)));
-        ScrollView scroll=new ScrollView(this);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,dp(10),0,dp(30));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);renderCurrent();
+        LinearLayout headCard=new LinearLayout(this);headCard.setOrientation(LinearLayout.VERTICAL);headCard.setPadding(dp(16),dp(14),dp(16),dp(14));headCard.setBackground(cardBackground(PRIMARY));headCard.setElevation(dp(3));
+        TextView title=new TextView(this);title.setText("Planning famille");title.setTextSize(24);title.setTypeface(Typeface.DEFAULT_BOLD);title.setTextColor(Color.WHITE);headCard.addView(title);
+        LinearLayout head=new LinearLayout(this);head.setOrientation(LinearLayout.HORIZONTAL);head.setGravity(Gravity.CENTER_VERTICAL);head.setPadding(0,dp(4),0,0);
+        TextView sub=new TextView(this);sub.setText(capitalize(new SimpleDateFormat("EEEE d MMMM",Locale.FRANCE).format(new Date())));sub.setTextSize(13);sub.setTextColor(Color.rgb(224,225,255));head.addView(sub,new LinearLayout.LayoutParams(0,-2,1));
+        syncBadge=new TextView(this);syncBadge.setTextSize(11);syncBadge.setTypeface(Typeface.DEFAULT_BOLD);syncBadge.setPadding(dp(10),dp(5),dp(10),dp(5));head.addView(syncBadge);headCard.addView(head);
+        root.addView(headCard,paramsWithTop(0));updateSyncBadge();
+
+        HorizontalScrollView hsv=new HorizontalScrollView(this);hsv.setHorizontalScrollBarEnabled(false);hsv.setPadding(0,dp(12),0,0);LinearLayout tabs=new LinearLayout(this);tabs.setOrientation(LinearLayout.HORIZONTAL);
+        addTab(tabs,"today","Aujourd'hui",()->showToday());addTab(tabs,"week","Semaine",()->showWeek());addTab(tabs,"add","➕ Ajouter",()->showAdd());addTab(tabs,"pickups","👥 Récup.",()->showPickups());addTab(tabs,"family","☁ Famille",()->showFamily());addTab(tabs,"reminders","🔔 Rappels",()->showReminders());
+        hsv.addView(tabs);root.addView(hsv,new LinearLayout.LayoutParams(-1,dp(52)));
+        ScrollView scroll=new ScrollView(this);scroll.setOverScrollMode(View.OVER_SCROLL_NEVER);content=new LinearLayout(this);content.setOrientation(LinearLayout.VERTICAL);content.setPadding(0,dp(12),0,dp(30));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));setContentView(root);renderCurrent();
     }
 
-    private Button tab(String label,Runnable r){Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(12);b.setOnClickListener(v->r.run());b.setLayoutParams(new LinearLayout.LayoutParams(dp(122),dp(46)));return b;}
-    private void renderCurrent(){switch(currentTab){case"week":showWeek();break;case"add":showAdd();break;case"pickups":showPickups();break;case"family":showFamily();break;case"reminders":showReminders();break;default:showToday();}}
+    private void addTab(LinearLayout tabs,String key,String label,Runnable r){
+        Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextSize(12.5f);b.setTypeface(Typeface.DEFAULT_BOLD);b.setPadding(dp(16),0,dp(16),0);
+        b.setOnClickListener(v->{r.run();highlightTabs();});
+        LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(-2,dp(40));lp.rightMargin=dp(8);b.setLayoutParams(lp);
+        tabs.addView(b);tabButtons.add(b);tabKeys.add(key);
+    }
+    private void highlightTabs(){for(int i=0;i<tabButtons.size();i++){Button b=tabButtons.get(i);boolean active=tabKeys.get(i).equals(currentTab);GradientDrawable g=new GradientDrawable();g.setCornerRadius(dp(20));g.setColor(active?PRIMARY:TAB_BG);b.setBackground(g);b.setTextColor(active?Color.WHITE:TEXT_DARK);}}
+    private void renderCurrent(){switch(currentTab){case"week":showWeek();break;case"add":showAdd();break;case"pickups":showPickups();break;case"family":showFamily();break;case"reminders":showReminders();break;default:showToday();}highlightTabs();}
 
     private boolean visibleChild(String child){return SupabaseSync.isAdmin(this)||SupabaseSync.childProfile(this).isEmpty()||SupabaseSync.childProfile(this).equals(child);}
     private List<PlannerEvent> eventsFor(Calendar date){String iso=iso(date);int day=date.get(Calendar.DAY_OF_WEEK);List<PlannerEvent>out=new ArrayList<>();for(PlannerEvent e:LocalStore.events(this))if(visibleChild(e.child)&&((e.weekly&&e.day==day)||(!e.weekly&&iso.equals(e.dateIso))))out.add(e);Collections.sort(out,Comparator.comparing(x->x.start));return out;}
@@ -73,7 +86,7 @@ public class MainActivity extends android.app.Activity implements SupabaseSync.U
     private void showToday(){currentTab="today";content.removeAllViews();Calendar c=Calendar.getInstance();addSection("Aujourd'hui");List<PlannerEvent>ev=eventsFor(c);if(ev.isEmpty())addMuted("Aucun cours ou activité prévu.");for(PlannerEvent e:ev)addEventCard(e);
         List<PickupAssignment> pa=pickupsForDate(iso(c));if(!pa.isEmpty()){addSection("Qui récupère ?");for(PickupAssignment a:pa)addPickupCard(a);}if(Calendar.getInstance().get(Calendar.DAY_OF_WEEK)==ScheduleData.TUE||Calendar.getInstance().get(Calendar.DAY_OF_WEEK)==ScheduleData.FRI)addNotice("⚠ Kelvyn : basket 17h30 • Andrew : basket 18h30.");}
 
-    private void showWeek(){currentTab="week";content.removeAllViews();Calendar base=Calendar.getInstance();int dow=base.get(Calendar.DAY_OF_WEEK);int delta=Calendar.MONDAY-dow;if(delta>0)delta-=7;base.add(Calendar.DAY_OF_YEAR,delta);for(int i=0;i<6;i++){Calendar d=(Calendar)base.clone();d.add(Calendar.DAY_OF_YEAR,i);addSection(new SimpleDateFormat("EEEE d MMM",Locale.FRANCE).format(d));List<PlannerEvent>l=eventsFor(d);if(l.isEmpty())addMuted("Rien de prévu.");for(PlannerEvent e:l)addEventCard(e);for(PickupAssignment a:pickupsForDate(iso(d)))addPickupCard(a);}}
+    private void showWeek(){currentTab="week";content.removeAllViews();Calendar base=Calendar.getInstance();int dow=base.get(Calendar.DAY_OF_WEEK);int delta=Calendar.MONDAY-dow;if(delta>0)delta-=7;base.add(Calendar.DAY_OF_YEAR,delta);for(int i=0;i<6;i++){Calendar d=(Calendar)base.clone();d.add(Calendar.DAY_OF_YEAR,i);addSection(capitalize(new SimpleDateFormat("EEEE d MMM",Locale.FRANCE).format(d.getTime())));List<PlannerEvent>l=eventsFor(d);if(l.isEmpty())addMuted("Rien de prévu.");for(PlannerEvent e:l)addEventCard(e);for(PickupAssignment a:pickupsForDate(iso(d)))addPickupCard(a);}}
 
     private void showAdd(){currentTab="add";content.removeAllViews();addSection("Ajouter au planning");if(!SupabaseSync.isAdmin(this)){addMuted("Sur le téléphone d'un enfant, le planning est en lecture seule.");return;}addMuted("Les événements ajoutés sont synchronisés avec tous les appareils de la famille dès qu'un espace famille est créé.");Button e=action("➕ Ajouter un événement");e.setOnClickListener(v->showAddEventDialog());content.addView(e,paramsWithTop(8));Button p=action("👤 Ajouter une personne autorisée");p.setOnClickListener(v->showAddPersonDialog());content.addView(p,paramsWithTop(8));Button a=action("🚗 Définir qui récupère un enfant");a.setOnClickListener(v->showAssignmentDialog());content.addView(a,paramsWithTop(8));}
 
@@ -120,32 +133,35 @@ public class MainActivity extends android.app.Activity implements SupabaseSync.U
     private PickupPerson personById(String id){for(PickupPerson p:LocalStore.people(this))if(p.id.equals(id))return p;return null;}
     private void addPersonCard(PickupPerson p){LinearLayout card=card(Color.rgb(99,102,241));card.addView(text(p.name+(p.relation.isEmpty()?"":" • "+p.relation),16,true,Color.rgb(67,56,202)));String c=p.children.isEmpty()?"Aucun enfant":String.join(" • ",p.children);card.addView(text(c+(p.phone.isEmpty()?"":"\n☎ "+p.phone),13,false,Color.rgb(55,65,81)));if(SupabaseSync.isAdmin(this)){card.setOnLongClickListener(v->{confirm("Supprimer cette personne ?",p.name,()->SupabaseSync.deletePerson(this,p.id));return true;});}content.addView(card,paramsWithTop(7));}
 
-    private LinearLayout card(int stroke){LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.setPadding(dp(14),dp(10),dp(14),dp(10));x.setBackground(cardBackground(Color.WHITE,stroke));return x;}
+    private LinearLayout card(int accent){LinearLayout x=new LinearLayout(this);x.setOrientation(LinearLayout.VERTICAL);x.setPadding(dp(14),dp(12),dp(14),dp(12));x.setBackground(cardBackground(Color.WHITE,accent));x.setElevation(dp(2));return x;}
     private TextView text(String s,int size,boolean bold,int color){TextView t=new TextView(this);t.setText(s);t.setTextSize(size);t.setTextColor(color);if(bold)t.setTypeface(Typeface.DEFAULT_BOLD);return t;}
-    private void addSection(String s){TextView t=text(s,18,true,Color.rgb(17,24,39));t.setPadding(0,dp(10),0,dp(4));content.addView(t);}
-    private void addMuted(String s){TextView t=text(s,13,false,Color.rgb(107,114,128));t.setPadding(0,dp(3),0,dp(7));content.addView(t);}
+    private void addSection(String s){LinearLayout row=new LinearLayout(this);row.setOrientation(LinearLayout.HORIZONTAL);row.setGravity(Gravity.CENTER_VERTICAL);row.setPadding(0,dp(14),0,dp(6));View dot=new View(this);GradientDrawable dg=new GradientDrawable();dg.setShape(GradientDrawable.OVAL);dg.setColor(PRIMARY);dot.setBackground(dg);LinearLayout.LayoutParams dlp=new LinearLayout.LayoutParams(dp(8),dp(8));dlp.rightMargin=dp(8);row.addView(dot,dlp);row.addView(text(s,17,true,TEXT_DARK));content.addView(row);}
+    private void addMuted(String s){TextView t=text(s,13,false,TEXT_MUTED);t.setPadding(dp(16),dp(3),0,dp(7));content.addView(t);}
     private void addNotice(String s){TextView t=text(s,13,false,Color.rgb(124,45,18));t.setPadding(dp(12),dp(10),dp(12),dp(10));t.setBackground(cardBackground(Color.rgb(255,247,237),ORANGE));content.addView(t,paramsWithTop(8));}
     private void addInfo(String k,String v){TextView t=text(k+" : "+v,15,"Code famille".equals(k),Color.rgb(31,41,55));t.setPadding(0,dp(4),0,dp(4));content.addView(t);}
-    private Button action(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);return b;}
+    private Button action(String s){Button b=new Button(this);b.setText(s);b.setAllCaps(false);b.setTypeface(Typeface.DEFAULT_BOLD);b.setTextColor(Color.WHITE);b.setTextSize(14);b.setPadding(dp(18),dp(10),dp(18),dp(10));GradientDrawable g=new GradientDrawable();g.setCornerRadius(dp(24));g.setColor(PRIMARY);b.setBackground(g);b.setElevation(dp(1));return b;}
     private EditText input(String hint){EditText e=new EditText(this);e.setHint(hint);e.setSingleLine(true);return e;}
     private TextView label(String s){TextView t=text(s,13,true,Color.rgb(55,65,81));t.setPadding(0,dp(8),0,0);return t;}
     private LinearLayout dialogBox(){LinearLayout l=new LinearLayout(this);l.setOrientation(LinearLayout.VERTICAL);l.setPadding(dp(20),dp(4),dp(20),0);return l;}
     private Spinner spinner(String[] items){Spinner s=new Spinner(this);ArrayAdapter<String>a=new ArrayAdapter<>(this,android.R.layout.simple_spinner_dropdown_item,items);s.setAdapter(a);return s;}
 
     private Switch switchRow(String title,String sub,boolean checked){LinearLayout box=card(Color.rgb(229,231,235));Switch sw=new Switch(this);sw.setText(title);sw.setTextSize(16);sw.setTypeface(Typeface.DEFAULT_BOLD);sw.setChecked(checked);box.addView(sw);box.addView(text(sub,13,false,Color.rgb(107,114,128)));content.addView(box,paramsWithTop(8));return sw;}
-    private void addMinuteButtons(String key,int def){LinearLayout row=new LinearLayout(this);int cur=prefs.getInt(key,def);for(int v:new int[]{10,15,20,30,45,60}){Button b=action(v+"m");b.setTextSize(11);if(v==cur)b.setTypeface(Typeface.DEFAULT_BOLD);b.setOnClickListener(x->{prefs.edit().putInt(key,v).apply();ReminderScheduler.scheduleAll(this);showReminders();});row.addView(b,new LinearLayout.LayoutParams(0,dp(42),1));}content.addView(row);}
+    private void addMinuteButtons(String key,int def){LinearLayout row=new LinearLayout(this);int cur=prefs.getInt(key,def);for(int v:new int[]{10,15,20,30,45,60}){boolean sel=v==cur;Button b=new Button(this);b.setText(v+"m");b.setAllCaps(false);b.setTextSize(12);b.setTypeface(Typeface.DEFAULT_BOLD);b.setTextColor(sel?Color.WHITE:TEXT_DARK);GradientDrawable g=new GradientDrawable();g.setCornerRadius(dp(18));g.setColor(sel?PRIMARY:TAB_BG);b.setBackground(g);b.setOnClickListener(x->{prefs.edit().putInt(key,v).apply();ReminderScheduler.scheduleAll(this);showReminders();});LinearLayout.LayoutParams lp=new LinearLayout.LayoutParams(0,dp(40),1);lp.rightMargin=dp(6);row.addView(b,lp);}content.addView(row);}
 
     private interface StringResult{void done(String value);}private void pickDate(Calendar seed,StringResult r){new DatePickerDialog(this,(v,y,m,d)->r.done(String.format(Locale.ROOT,"%04d-%02d-%02d",y,m+1,d)),seed.get(Calendar.YEAR),seed.get(Calendar.MONTH),seed.get(Calendar.DAY_OF_MONTH)).show();}
     private void pickTime(String initial,StringResult r){String[]p=initial.split(":");new TimePickerDialog(this,(v,h,m)->r.done(String.format(Locale.ROOT,"%02d:%02d",h,m)),Integer.parseInt(p[0]),Integer.parseInt(p[1]),true).show();}
     private int calendarDay(int pos){return new int[]{Calendar.MONDAY,Calendar.TUESDAY,Calendar.WEDNESDAY,Calendar.THURSDAY,Calendar.FRIDAY,Calendar.SATURDAY,Calendar.SUNDAY}[pos];}
     private String iso(Calendar c){return new SimpleDateFormat("yyyy-MM-dd",Locale.ROOT).format(c.getTime());}
     private int childColor(String child){if("Andrew".equals(child))return BLUE;if("Shanayss".equals(child))return PINK;return GREEN;}
-    private GradientDrawable cardBackground(int fill,int stroke){GradientDrawable g=new GradientDrawable();g.setColor(fill);g.setCornerRadius(dp(14));g.setStroke(dp(2),stroke);return g;}
+    private GradientDrawable cardBackground(int fill,int accent){GradientDrawable g=new GradientDrawable();g.setColor(fill);g.setCornerRadius(dp(16));g.setStroke(dp(1),blend(accent,Color.WHITE,0.55f));return g;}
+    private GradientDrawable cardBackground(int fill){GradientDrawable g=new GradientDrawable();g.setColor(fill);g.setCornerRadius(dp(16));return g;}
+    private int blend(int color,int with,float ratio){float ir=1f-ratio;int r=Math.round(Color.red(color)*ir+Color.red(with)*ratio);int gr=Math.round(Color.green(color)*ir+Color.green(with)*ratio);int bl=Math.round(Color.blue(color)*ir+Color.blue(with)*ratio);return Color.rgb(r,gr,bl);}
+    private String capitalize(String s){return s==null||s.isEmpty()?s:Character.toUpperCase(s.charAt(0))+s.substring(1);}
     private LinearLayout.LayoutParams paramsWithTop(int top){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.topMargin=dp(top);return p;}
     private int dp(int v){return Math.round(v*getResources().getDisplayMetrics().density);}
     private void confirm(String title,String msg,Runnable yes){new AlertDialog.Builder(this).setTitle(title).setMessage(msg).setNegativeButton("Annuler",null).setPositiveButton("Oui",(d,w)->{yes.run();renderCurrent();}).show();}
 
-    private void updateSyncBadge(){if(syncBadge==null)return;if(SupabaseSync.hasFamily(this)){syncBadge.setText("☁ Synchro");syncBadge.setTextColor(Color.rgb(22,101,52));}else{syncBadge.setText("● Local");syncBadge.setTextColor(Color.rgb(107,114,128));}}
+    private void updateSyncBadge(){if(syncBadge==null)return;boolean synced=SupabaseSync.hasFamily(this);syncBadge.setText(synced?"☁ Synchro":"● Local");syncBadge.setTextColor(Color.WHITE);GradientDrawable g=new GradientDrawable();g.setCornerRadius(dp(14));g.setColor(synced?Color.rgb(22,163,74):blend(Color.WHITE,PRIMARY,0.35f));syncBadge.setBackground(g);}
     @Override public void onSyncChanged(){runOnUiThread(()->{updateSyncBadge();renderCurrent();});}
     @Override public void onSyncMessage(String m){runOnUiThread(()->{updateSyncBadge();if(m!=null&&m.startsWith("Erreur"))Toast.makeText(this,m,Toast.LENGTH_LONG).show();});}
 
