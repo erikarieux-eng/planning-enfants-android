@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- anneaux du calendrier -->
+    <path android:fillColor="#FFFFFF" android:pathData="M44,26L50,26L50,38L44,38Z" />
+    <path android:fillColor="#FFFFFF" android:pathData="M58,26L64,26L64,38L58,38Z" />
+    <!-- carte blanche du calendrier -->
+    <path android:fillColor="#FFFFFF" android:pathData="M32,34L76,34L76,72L32,72Z" />
+    <!-- coche -->
+    <path
+        android:fillColor="#00000000"
+        android:strokeColor="#4F46E5"
+        android:strokeWidth="6"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:pathData="M40,54 L50,64 L68,38" />
+    <!-- trois pastilles (les enfants) -->
+    <path android:fillColor="#2563EB" android:pathData="M37,80 A5,5 0 1,0 47,80 A5,5 0 1,0 37,80 Z" />
+    <path android:fillColor="#BE185D" android:pathData="M49,80 A5,5 0 1,0 59,80 A5,5 0 1,0 49,80 Z" />
+    <path android:fillColor="#16A34A" android:pathData="M61,80 A5,5 0 1,0 71,80 A5,5 0 1,0 61,80 Z" />
+</vector>
