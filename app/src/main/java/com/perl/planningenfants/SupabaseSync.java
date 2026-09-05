@@ -428,14 +428,15 @@ public final class SupabaseSync {
         JSONObject o = new JSONObject();
         o.put("id", a.id); o.put("family_id", familyId); o.put("date_iso", a.dateIso); o.put("child", a.child);
         o.put("time_slot", a.time); o.put("person_id", a.personId); o.put("person_name", a.personName);
-        o.put("note", a.note); o.put("updated_at", a.updatedAt);
+        o.put("note", a.note); o.put("response_token", a.responseToken.isEmpty() ? null : a.responseToken); o.put("updated_at", a.updatedAt);
         return o;
     }
     private static PickupAssignment pickupFromJson(JSONObject o) {
         PickupAssignment a = new PickupAssignment();
         a.id = o.optString("id", ""); a.dateIso = o.optString("date_iso", ""); a.child = o.optString("child", "");
         a.time = o.optString("time_slot", ""); a.personId = o.optString("person_id", ""); a.personName = o.optString("person_name", "");
-        a.note = o.optString("note", ""); a.updatedAt = o.optLong("updated_at", 0L);
+        a.note = o.optString("note", ""); a.responseToken = o.optString("response_token", ""); a.responseStatus = o.optString("response_status", "pending");
+        a.updatedAt = o.optLong("updated_at", 0L);
         return a;
     }
 

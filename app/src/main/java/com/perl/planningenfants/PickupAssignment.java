@@ -11,6 +11,8 @@ public class PickupAssignment {
     public String personId = "";
     public String personName = "";
     public String note = "";
+    public String responseToken = "";
+    public String responseStatus = "pending";
     public long updatedAt = 0L;
 
     public PickupAssignment() {}
@@ -19,7 +21,7 @@ public class PickupAssignment {
         Map<String, Object> m = new HashMap<>();
         m.put("id", id); m.put("dateIso", dateIso); m.put("child", child);
         m.put("time", time); m.put("personId", personId); m.put("personName", personName);
-        m.put("note", note); m.put("updatedAt", updatedAt);
+        m.put("note", note); m.put("responseToken", responseToken); m.put("responseStatus", responseStatus); m.put("updatedAt", updatedAt);
         return m;
     }
 
