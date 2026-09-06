@@ -253,7 +253,7 @@ public class MainActivity extends android.app.Activity implements SupabaseSync.U
     }
 
     private void sharePickupLink(PickupAssignment a){
-        String link="https://sgykmprbccygxuxfzasa.supabase.co/functions/v1/pickup-response?token="+a.responseToken;
+        String link="https://cdn.jsdelivr.net/gh/erikarieux-eng/planning-enfants-android@main/web/recuperation.html?token="+a.responseToken;
         String msg="Bonjour "+a.personName+", peux-tu récupérer "+a.child+" le "+a.dateIso+" à "+a.time+" ?\n"+link;
         Intent i=new Intent(Intent.ACTION_SEND);i.setType("text/plain");i.putExtra(Intent.EXTRA_TEXT,msg);
         startActivity(Intent.createChooser(i,"Envoyer le lien à "+a.personName));
