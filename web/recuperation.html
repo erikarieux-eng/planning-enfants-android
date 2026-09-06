@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Récupération - Planning Enfants</title>
+<style>
+body{font-family:-apple-system,Roboto,Arial,sans-serif;background:#F6F6F9;margin:0;padding:24px 16px;color:#111827}
+.card{max-width:420px;margin:40px auto;background:#fff;border-radius:16px;padding:24px;box-shadow:0 2px 12px rgba(0,0,0,.08)}
+h1{font-size:20px;margin:0 0 8px}
+p{font-size:15px;line-height:1.5;color:#374151}
+.btn{display:block;text-align:center;text-decoration:none;padding:14px;border-radius:24px;font-weight:600;margin-top:12px;font-size:15px;border:none;width:100%;cursor:pointer;box-sizing:border-box;font-family:inherit}
+.accept{background:#16A34A;color:#fff}
+.decline{background:#DC2626;color:#fff}
+.cal{background:#EEF2FF;color:#4F46E5;display:inline-block;text-decoration:none}
+.muted{color:#6B7280;font-size:13px;margin-top:16px;text-align:center}
+.status{padding:14px;border-radius:12px;text-align:center;font-weight:600;margin-bottom:8px}
+.status.accepted{background:#DCFCE7;color:#166534}
+.status.declined{background:#FEE2E2;color:#991B1B}
+.loading{text-align:center;color:#6B7280;padding:40px 0}
+</style>
+</head>
+<body>
+<div class="card" id="card"><div class="loading">Chargement…</div></div>
+<script>
+const SUPABASE_FN_URL = "https://sgykmprbccygxuxfzasa.supabase.co/functions/v1/pickup-response";
+const SUPABASE_ANON_KEY = "sb_publishable_Wdv0mV-Q0_bertXJGRcvfg_66au4cXg";
+
+const DAYS = ["dimanche","lundi","mardi","mercredi","jeudi","vendredi","samedi"];
+const MONTHS = ["janvier","février","mars","avril","mai","juin","juillet","août","septembre","octobre","novembre","décembre"];
+
+function dayFR(dateIso) {
+  try {
+    const d = new Date(dateIso + "T00:00:00");
+    return DAYS[d.getDay()] + " " + d.getDate() + " " + MONTHS[d.getMonth()];
+  } catch (e) { return dateIso; }
+}
+
+function gcalLink(child, dateIso, time) {
+  const parts = (time || "17:00").split(":").map(x => parseInt(x || "0", 10));
+  const h = parts[0] || 0, m = parts[1] || 0;
+  const pad = n => String(n).padStart(2, "0");
+  const startH = pad(h) + pad(m) + "00";
+  const endTotal = h * 60 + m + 30;
+  const endH = pad(Math.floor(endTotal / 60) % 24) + pad(endTotal % 60) + "00";
+  const datePart = (dateIso || "").split("-").join("");
+  const dates = datePart + "T" + startH + "/" + datePart + "T" + endH;
+  const text = encodeURIComponent("Récupérer " + child);
+  const details = encodeURIComponent("Récupération de " + child + " - Planning Enfants");
+  return "https://calendar.google.com/calendar/render?action=TEMPLATE&text=" + text + "&dates=" + dates + "&details=" + details;
+}
+
+function esc(s) {
+  const d = document.createElement("div");
+  d.textContent = s == null ? "" : String(s);
+  return d.innerHTML;
+}
+
+async function callApi(token, action) {
+  let url = SUPABASE_FN_URL + "?token=" + encodeURIComponent(token);
+  if (action) url += "&action=" + action;
+  const resp = await fetch(url, {
+    headers: { apikey: SUPABASE_ANON_KEY, Authorization: "Bearer " + SUPABASE_ANON_KEY }
+  });
+  return resp.json();
+}
+
+function render(data) {
+  const card = document.getElementById("card");
+  if (!data || !data.ok) {
+    card.innerHTML = "<h1>Lien introuvable</h1><p>Cette demande de récupération n'existe plus ou a été supprimée.</p>";
+    return;
+  }
+  const when = dayFR(data.date_iso) + " à " + esc(data.time_slot || "");
+  const cal = gcalLink(data.child, data.date_iso, data.time_slot);
+
+  if (data.response_status === "accepted") {
+    card.innerHTML = '<div class="status accepted">✅ Récupération confirmée</div>' +
+      "<p><b>" + esc(data.person_name) + "</b> récupère <b>" + esc(data.child) + "</b><br>" + when + "</p>" +
+      '<a class="btn cal" href="' + cal + '" target="_blank">📅 Ajouter à Google Agenda</a>' +
+      '<p class="muted">Tu peux fermer cette page.</p>';
+    return;
+  }
+  if (data.response_status === "declined") {
+    card.innerHTML = '<div class="status declined">❌ Récupération déclinée</div>' +
+      "<p><b>" + esc(data.person_name) + "</b> ne peut pas récupérer <b>" + esc(data.child) + "</b><br>" + when + "</p>" +
+      '<p class="muted">La famille a été prévenue. Tu peux fermer cette page.</p>';
+    return;
+  }
+  card.innerHTML = "<h1>Demande de récupération</h1>" +
+    "<p><b>" + esc(data.person_name) + "</b>, peux-tu récupérer <b>" + esc(data.child) + "</b> ?<br>" + when + "</p>" +
+    '<button class="btn accept" id="btnAccept">✅ J\'accepte</button>' +
+    '<button class="btn decline" id="btnDecline">❌ Je ne peux pas</button>' +
+    '<a class="btn cal" href="' + cal + '" target="_blank">📅 Ajouter à Google Agenda</a>' +
+    '<p class="muted">Ta réponse est envoyée directement à la famille.</p>';
+
+  const token = new URLSearchParams(location.search).get("token");
+  document.getElementById("btnAccept").onclick = () => respond(token, "accept");
+  document.getElementById("btnDecline").onclick = () => respond(token, "decline");
+}
+
+async function respond(token, action) {
+  document.getElementById("card").innerHTML = '<div class="loading">Envoi en cours…</div>';
+  try {
+    const data = await callApi(token, action);
+    render(data);
+  } catch (e) {
+    document.getElementById("card").innerHTML = "<h1>Erreur</h1><p>Impossible d'envoyer ta réponse. Réessaie dans un instant.</p>";
+  }
+}
+
+(async function init() {
+  const token = new URLSearchParams(location.search).get("token");
+  if (!token) {
+    document.getElementById("card").innerHTML = "<h1>Lien invalide</h1><p>Ce lien de récupération est incomplet ou incorrect.</p>";
+    return;
+  }
+  try {
+    const data = await callApi(token, null);
+    render(data);
+  } catch (e) {
+    document.getElementById("card").innerHTML = "<h1>Service indisponible</h1><p>Réessaie dans quelques instants.</p>";
+  }
+})();
+</script>
+</body>
+</html>
